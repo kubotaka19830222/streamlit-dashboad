@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import numpy as np
 
 # ページ設定
 st.set_page_config(page_title="販売データ分析ダッシュボード", layout="wide")
@@ -82,15 +83,72 @@ with tab2:
     st.plotly_chart(fig_region, use_container_width=True)
 
 with tab3:
-    # カテゴリー別の詳細分析
-    category_details = filtered_df.groupby(['購入カテゴリー', '支払方法'])['購入金額'].sum().reset_index()
-    fig_category_details = px.bar(category_details, x='購入カテゴリー', y='購入金額', color='支払方法', title='カテゴリー別・支払方法別売上')
-    st.plotly_chart(fig_category_details, use_container_width=True)
+    st.subheader("商品分析詳細")
     
-    # 支払方法の分布
-    payment_dist = filtered_df['支払方法'].value_counts()
-    fig_payment = px.pie(values=payment_dist.values, names=payment_dist.index, title='支払方法の分布')
-    st.plotly_chart(fig_payment, use_container_width=True)
+    # 時間帯別の売上傾向
+    filtered_df['時間帯'] = filtered_df['購入日'].dt.hour
+    hourly_sales = filtered_df.groupby('時間帯')['購入金額'].sum().reset_index()
+    fig_hourly = px.line(hourly_sales, x='時間帯', y='購入金額', 
+                        title='時間帯別売上傾向',
+                        labels={'時間帯': '時刻（24時間制）', '購入金額': '売上金額'})
+    st.plotly_chart(fig_hourly, use_container_width=True)
+
+    # 季節性の分析
+    filtered_df['月'] = filtered_df['購入日'].dt.month
+    seasonal_sales = filtered_df.groupby('月')['購入金額'].mean().reset_index()
+    fig_seasonal = px.line(seasonal_sales, x='月', y='購入金額',
+                          title='月別平均売上（季節性分析）',
+                          labels={'月': '月', '購入金額': '平均売上金額'})
+    fig_seasonal.update_xaxes(ticktext=['1月', '2月', '3月', '4月', '5月', '6月', 
+                                      '7月', '8月', '9月', '10月', '11月', '12月'],
+                             tickvals=list(range(1, 13)))
+    st.plotly_chart(fig_seasonal, use_container_width=True)
+
+    # 価格帯別の販売数分析
+    price_bins = [0, 1000, 5000, 10000, 50000, 100000, float('inf')]
+    price_labels = ['1,000円未満', '1,000-5,000円', '5,000-10,000円', 
+                   '10,000-50,000円', '50,000-100,000円', '100,000円以上']
+    filtered_df['価格帯'] = pd.cut(filtered_df['購入金額'], bins=price_bins, labels=price_labels)
+    price_range_sales = filtered_df.groupby('価格帯').size().reset_index(name='販売数')
+    fig_price_range = px.bar(price_range_sales, x='価格帯', y='販売数',
+                            title='価格帯別販売数分布')
+    st.plotly_chart(fig_price_range, use_container_width=True)
+
+    # 商品カテゴリーのクロス分析
+    st.subheader("カテゴリー間の関連性分析")
+    
+    # 同じ日時に購入されたカテゴリーの組み合わせを分析
+    filtered_df['購入日時'] = filtered_df['購入日'].dt.strftime('%Y-%m-%d %H:00:00')
+    category_combinations = filtered_df.groupby('購入日時')['購入カテゴリー'].agg(list).reset_index()
+    
+    # カテゴリーのペアを作成
+    category_pairs = []
+    for categories in category_combinations['購入カテゴリー']:
+        unique_categories = list(set(categories))  # 重複を除去
+        if len(unique_categories) > 1:
+            for i in range(len(unique_categories)):
+                for j in range(i+1, len(unique_categories)):
+                    category_pairs.append(tuple(sorted([unique_categories[i], unique_categories[j]])))
+    
+    # ペアの出現回数をカウント
+    if category_pairs:
+        pair_counts = pd.DataFrame(category_pairs, columns=['カテゴリー1', 'カテゴリー2'])
+        pair_counts = pair_counts.groupby(['カテゴリー1', 'カテゴリー2']).size().reset_index(name='同時購入回数')
+        pair_counts = pair_counts.sort_values('同時購入回数', ascending=False)
+        
+        # 上位の組み合わせを表示
+        st.write("よく同じ時間帯に購入されるカテゴリーの組み合わせ（上位10件）")
+        st.dataframe(pair_counts.head(10))
+        
+        # ヒートマップの作成
+        if len(pair_counts) > 1:  # ヒートマップを作成するのに十分なデータがある場合
+            heatmap_data = pair_counts.pivot(index='カテゴリー1', columns='カテゴリー2', values='同時購入回数')
+            fig_heatmap = px.imshow(heatmap_data,
+                                   title='カテゴリー間の同時購入ヒートマップ',
+                                   labels=dict(x='カテゴリー2', y='カテゴリー1', color='同時購入回数'))
+            st.plotly_chart(fig_heatmap, use_container_width=True)
+    else:
+        st.write("同時購入データが見つかりませんでした")
 
 # データテーブルの表示（折りたたみ可能）
 with st.expander("詳細データを表示"):
