@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
+import os
 
 # ページ設定
 st.set_page_config(page_title="販売データ分析ダッシュボード", layout="wide")
@@ -12,7 +13,27 @@ st.title("販売データ分析ダッシュボード")
 # データ読み込み
 @st.cache_data
 def load_data():
-    df = pd.read_csv('data/sample-data.csv')
+    # データファイルの存在確認
+    data_path = 'data/sample-data.csv'
+    if not os.path.exists(data_path):
+        st.error(f"データファイル {data_path} が見つかりません。")
+        # サンプルデータの作成
+        df = pd.DataFrame({
+            '購入日': pd.date_range(start='2023-01-01', end='2023-12-31', freq='D'),
+            '購入金額': np.random.randint(1000, 100000, size=365),
+            '購入カテゴリー': np.random.choice(['食品', '衣類', '電化製品', '書籍', '雑貨'], size=365),
+            '年齢': np.random.randint(20, 70, size=365),
+            '性別': np.random.choice(['男性', '女性'], size=365),
+            '地域': np.random.choice(['東京', '大阪', '名古屋', '福岡', '札幌'], size=365),
+        })
+        # データディレクトリの作成
+        os.makedirs('data', exist_ok=True)
+        # サンプルデータの保存
+        df.to_csv(data_path, index=False)
+        st.info("サンプルデータを作成しました。")
+    else:
+        df = pd.read_csv(data_path)
+    
     df['購入日'] = pd.to_datetime(df['購入日'])
     # 年齢層の計算を追加
     df['年齢層'] = pd.cut(df['年齢'], bins=[0, 20, 30, 40, 50, 60, 100], labels=['20歳未満', '20代', '30代', '40代', '50代', '60歳以上'])
