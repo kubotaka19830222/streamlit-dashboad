@@ -16,4 +16,7 @@ ENV/
 
 # その他
 .DS_Store
-*.log 
+*.log
+
+# データファイルは含める
+!data/*.csv 
